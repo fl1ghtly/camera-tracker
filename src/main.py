@@ -40,7 +40,34 @@ def main():
             prev = next
         
         cap.release()
-    '''
+
+    vt._visualize_grid()
+
+def rotationMatrix(x, y, z) -> np.ndarray:
+    """Converts from Euler Angles (XYZ order) to a vector"""
+    # Calculate trig values once
+    cx = math.cos(x)
+    sx = math.sin(x)
+    cy = math.cos(y)
+    sy = math.sin(y)
+    cz = math.cos(z)
+    sz = math.sin(z)
+
+    # Form individual rotation matrices
+    rx = np.array([[1, 0, 0],
+                    [0, cx, -sx],
+                    [0, sx, cx]])
+    ry = np.array([[cy, 0, sy],
+                    [0, 1, 0],
+                    [-sy, 0, cy]])
+    rz = np.array([[cz, -sz, 0],
+                    [sz, cz, 0],
+                    [0, 0, 1]])
+
+    # Form the final rotation matrix
+    r = rz @ ry @ rx
+
+    return r
 
 if __name__ == "__main__":
     main()

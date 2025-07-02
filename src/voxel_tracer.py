@@ -29,9 +29,9 @@ class VoxelTracer:
         self.plotter.show_grid() # type: ignore
         self.plotter.show()
         
-    def _add_line(self, ray: Ray):
+    def _add_line(self, ray: Ray, color: str):
         line = pv.Line(ray.origin, ray.origin + ray.norm_dir * -300)
-        self.plotter.add_mesh(line, color='#FF0000', line_width=2)
+        self.plotter.add_mesh(line, color=color, line_width=2)
         
 
     def _add_motion_data(self, voxels: list[np.ndarray], data: float):

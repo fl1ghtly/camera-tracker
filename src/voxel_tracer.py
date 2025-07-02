@@ -23,14 +23,14 @@ class VoxelTracer:
         grid.dimensions = np.array(self.voxel_grid.shape) + 1
         grid.spacing = (1, 1, 1)
         grid.cell_data['values'] = self.voxel_grid.flatten(order="F")
-        
 
-        self.plotter.add_mesh(grid)
+        self.plotter.add_mesh(grid, show_edges=True)
         self.plotter.show_grid() # type: ignore
         self.plotter.show()
         
-    def _add_line(self, ray: Ray, color: str):
-        line = pv.Line(ray.origin, ray.origin + ray.norm_dir * -300)
+    def _add_line(self, ray: Ray, color: str, reversed=False):
+        rev = -1 if reversed else 1
+        line = pv.Line(ray.origin, ray.origin + ray.norm_dir * 300 * rev)
         self.plotter.add_mesh(line, color=color, line_width=2)
         
 
@@ -51,6 +51,8 @@ class VoxelTracer:
         # Initialization
         # floating point representation of grid entry position
         start = ray.origin + ray.norm_dir * max(t_entry, 0.0)
+        # Be lenient on possible floating point inaccuracies
+        start[start == self.grid_size] = self.grid_size - 1
         
         # traversal constants
         step = np.sign(ray.norm_dir)

@@ -6,10 +6,13 @@ class Camera:
 	position: np.ndarray
 	# Rotation in radians
 	rotation: np.ndarray
+	# FOV in degrees
+	fov: float
 	video: str
     
-	def __init__(self, position: tuple[float, float, float], rotation: tuple[float, float, float], video: str):
+	def __init__(self, position: tuple[float, float, float], rotation: tuple[float, float, float], video: str, fov: float):
 		self.position = np.array(position)
 		deg2rad = np.vectorize(math.radians)
 		self.rotation = deg2rad(rotation)
 		self.video = video
+		self.fov = fov

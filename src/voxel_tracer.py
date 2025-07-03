@@ -23,11 +23,7 @@ class VoxelTracer:
             self.voxel_grid[v[0]][v[1]][v[2]] += data
         
     def raycast_into_voxels(self, ray: Ray) -> list[np.ndarray]:
-        """Returns all voxel indexes intersected by the raycast
-        
-        ro: Ray origin
-        rd: Ray direction
-        """
+        """Returns all voxel indexes intersected by the raycast"""
         # Check if ray intersects voxel grid
         intersected, t_entry = self.ray_aabb(ray, self.grid_min, self.grid_max)
         if not intersected: return []

@@ -5,18 +5,25 @@ from camera import Camera
 import motion_filter as mf
 from voxel_tracer import VoxelTracer
 from ray import Ray
+from graph import Graph
+
+GRID_SIZE = 32
+VOXEL_SIZE = 4.0
 
 def main():
     cam_L = Camera((39.694, -211.93, 1.111), 
                    (94.8, 0.000014, 13.6), 
-                   "./videos/cam_L.mkv")
+                   "./videos/cam_L.mkv",
+                   39.6)
     cam_R = Camera((72.616, 62.409, 0.047733), 
                    (90.267, -0.000012, 128.27), 
-                   "./videos/cam_R.mkv")
+                   "./videos/cam_R.mkv",
+                   39.6)
     cameras = [cam_L, cam_R]
     
-    # TODO set first camera data to 0 and adjust all other camera's data accordingly
-    vt = VoxelTracer(32, 4.)
+    vt = VoxelTracer(GRID_SIZE, VOXEL_SIZE)
+    graph = Graph()
+
     for cam in cameras:
         cap = cv2.VideoCapture(cam.video)
 
@@ -25,10 +32,9 @@ def main():
         height, width, _ = frame.shape
 
         # Camera constants
-        fov = 39.6
-        h = math.tan(math.radians(fov) / 2)
         focal_length = 1.0
-        # Viewport height is an arbitrary value
+        # Viewport height constant is an arbitrary value
+        h = math.tan(math.radians(cam.fov) / 2)
         viewport_height = 1.0 * h * focal_length
         viewport_width = viewport_height * width / height
 
@@ -52,7 +58,7 @@ def main():
             cam_rot = rotationMatrix(*cam.rotation)
             cam_dir = cam_rot @ np.array((0, 0, 1))
             # Add green line representing camera direction in world space
-            vt._add_line(Ray(cam.position, cam_dir), '#00FF00', reversed=True)
+            graph.add_ray(Ray(cam.position, cam_dir), '#00FF00', reversed=True)
             
             motion_mask = mf.filter_motion(prev, next, 2)
             for j in range(height):
@@ -68,16 +74,15 @@ def main():
                     voxels = vt.raycast_into_voxels(r)
                     color = '#0000FF'   # Miss
                     if voxels:
-                        vt._add_motion_data(voxels, motion_mask[j][i])
+                        vt.add_motion_data(voxels, motion_mask[j][i])
                         color = '#FF0000'   # Hit
-                    vt._add_line(r, color)
+                    graph.add_ray(r, color)
             prev = next
+            graph.add_voxels(vt.voxel_grid, vt.voxel_origin, VOXEL_SIZE)
             # cv2.imshow(cam.video, motion_mask)
             break
         cap.release()
-
-    vt._visualize_grid()
-    cv2.waitKey()
+    graph.show()
 
 def rotationMatrix(x, y, z) -> np.ndarray:
     """Converts from Euler Angles (XYZ order) to a vector"""

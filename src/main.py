@@ -45,28 +45,35 @@ def main():
             if not ret: break
             
             next = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            # Get camera direction vector
             cam_rot = rotationMatrix(*cam.rotation)
             cam_dir = cam_rot @ np.array((0, 0, 1))
-            vt._add_line(Ray(cam.position, cam_dir), '#00FF00')
-            # motion_mask = mf.filter_motion(prev, next, 2)
-            for j in range(0, height, 100):
-                for i in range(0, width, 100):
+            # Add green line representing camera direction in world space
+            vt._add_line(Ray(cam.position, cam_dir), '#00FF00', reversed=True)
+            
+            motion_mask = mf.filter_motion(prev, next, 2)
+            for j in range(height):
+                for i in range(width):
+                    # Skip pixels with no motion data
+                    if motion_mask[j][i] == 0:
+                        continue
+                    # Cast a ray through the center of the pixel
                     pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v)
                     pixel_dir = pixel_center - cam.position
-                    # pixel_dir = rotationMatrix(-math.pi / 2, 0, 0) @ pixel_dir
                     pixel_dir = cam_rot @ pixel_dir
-                    r = Ray(cam.position, -pixel_dir)
-                    '''
+                    r = Ray(cam.position, pixel_dir)
                     voxels = vt.raycast_into_voxels(r)
                     if voxels:
-                        vt._add_motion_data(voxels, pixel)
-                    '''
-                    vt._add_line(r, '#FF0000')
+                        vt._add_motion_data(voxels, motion_mask[j][i])
+                        vt._add_line(r, '#FF0000')
             prev = next
+            cv2.imshow('Motion Mask', motion_mask)
             break
         cap.release()
 
     vt._visualize_grid()
+    cv2.waitKey()
 
 def rotationMatrix(x, y, z) -> np.ndarray:
     """Converts from Euler Angles (XYZ order) to a vector"""

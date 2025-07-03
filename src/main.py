@@ -8,15 +8,15 @@ from ray import Ray
 
 def main():
     cam_L = Camera((39.694, -211.93, 1.111), 
-                   (94.8, 0, 13.6), 
+                   (94.8, 0.000014, 13.6), 
                    "./videos/cam_L.mkv")
     cam_R = Camera((72.616, 62.409, 0.047733), 
-                   (90.267, 0, 128.27), 
+                   (90.267, -0.000012, 128.27), 
                    "./videos/cam_R.mkv")
-    cameras = [cam_L]
+    cameras = [cam_L, cam_R]
     
     # TODO set first camera data to 0 and adjust all other camera's data accordingly
-    vt = VoxelTracer(32, 2.)
+    vt = VoxelTracer(32, 4.)
     for cam in cameras:
         cap = cv2.VideoCapture(cam.video)
 
@@ -25,9 +25,11 @@ def main():
         height, width, _ = frame.shape
 
         # Camera constants
+        fov = 39.6
+        h = math.tan(math.radians(fov) / 2)
         focal_length = 1.0
         # Viewport height is an arbitrary value
-        viewport_height = 2.0
+        viewport_height = 1.0 * h * focal_length
         viewport_width = viewport_height * width / height
 
         viewport_u = np.array((viewport_width, 0, 0))
@@ -64,11 +66,13 @@ def main():
                     pixel_dir = cam_rot @ pixel_dir
                     r = Ray(cam.position, pixel_dir)
                     voxels = vt.raycast_into_voxels(r)
+                    color = '#0000FF'   # Miss
                     if voxels:
                         vt._add_motion_data(voxels, motion_mask[j][i])
-                        vt._add_line(r, '#FF0000')
+                        color = '#FF0000'   # Hit
+                    vt._add_line(r, color)
             prev = next
-            cv2.imshow('Motion Mask', motion_mask)
+            # cv2.imshow(cam.video, motion_mask)
             break
         cap.release()
 

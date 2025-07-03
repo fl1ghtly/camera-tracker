@@ -16,17 +16,7 @@ def main():
     cameras = [cam_L]
     
     # TODO set first camera data to 0 and adjust all other camera's data accordingly
-    vt = VoxelTracer(32)
-    '''
-    r1 = Ray(cam_L.position, cam_L.rotation_vec)
-    r2 = Ray(cam_R.position, cam_R.rotation_vec)
-    voxels = vt.raycast_into_voxels(r1)
-    voxels = vt.raycast_into_voxels(r2)
-    vt._add_motion_data(voxels, 1)
-    vt._add_line(r1)
-    vt._add_line(r2)
-    vt._visualize_grid()
-    '''
+    vt = VoxelTracer(32, 2.)
     for cam in cameras:
         cap = cv2.VideoCapture(cam.video)
 

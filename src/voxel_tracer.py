@@ -17,13 +17,12 @@ class VoxelTracer:
         self.voxel_size = voxel_size
         bottom_left_corner = -voxel_size / 2 * cells
         self.voxel_origin = np.full(3, bottom_left_corner)
-        self.grid_min = np.full(3, -cells / 2)
-        self.grid_max = np.full(3, cells / 2)
+        self.grid_min = np.full(3, -voxel_size * cells / 2)
+        self.grid_max = np.full(3, voxel_size * cells / 2)
         self.grid_size = cells
         self.plotter = pv.Plotter()
         
     def _visualize_grid(self):
-
         grid = pv.ImageData()
         grid.dimensions = np.array(self.voxel_grid.shape) + 1
         grid.spacing = (self.voxel_size, self.voxel_size, self.voxel_size)
@@ -49,45 +48,49 @@ class VoxelTracer:
         ro: Ray origin
         rd: Ray direction
         """
-        # Check if ray is casted into the voxel grid
+        # Check if ray intersects voxel grid
         intersected, t_entry = self.ray_aabb(ray, self.grid_min, self.grid_max)
         if not intersected: return []
 
         # Initialization
-        # floating point representation of grid entry position
+        # Floating point representation of grid entry position
         start = ray.origin + ray.norm_dir * max(t_entry, 0.0)
-        # Be lenient on possible floating point inaccuracies
-        start[start == self.grid_size] = self.grid_size - 1
-        
-        # traversal constants
-        step = np.sign(ray.norm_dir)
-        delta = 1.0 / ray.norm_dir
 
-        # indices of current voxel
-        pos = np.clip(np.floor(start), 0, self.grid_size)
+        # Traversal constants
+        step = np.sign(ray.norm_dir)
+        delta = self.voxel_size / np.abs(ray.norm_dir)
         
-        tMax = (pos + step - start) / ray.norm_dir
+        # Indices of current voxel
+        current_voxel = np.floor((start - self.grid_min) / self.voxel_size).astype(np.int32)
+        # Clamp current voxel to grid
+        current_voxel = np.clip(current_voxel, 0, self.grid_size - 1)
+
+        # Get next voxel boundary
+        next_voxel = self.grid_min + (current_voxel + (step > 0)) * self.voxel_size
+
+        # Calculate tMax, distance to the next voxel boundary for each axis
+        tMax = (next_voxel - ray.origin) / ray.norm_dir
         # Handle division by zero
-        division_err = np.argwhere(ray.norm_dir == 0)
-        np.put(tMax, division_err, np.inf)
-        
+        tMax[ray.norm_dir == 0] = np.inf
+
         # Traversal
-        voxels = [np.array(pos.astype(np.int32))]
+        voxels = [current_voxel.copy()]
 
         while (True):
+            # Find which axis has the smallest tMax and traverse on that axis
             if (tMax[0] < tMax[1] and tMax[0] < tMax[2]):
-                pos[0] += step[0]
-                if (pos[0] < 0 or pos[0] >= self.grid_size): break
+                current_voxel[0] += step[0]
+                if (current_voxel[0] < 0 or current_voxel[0] >= self.grid_size): break
                 tMax[0] += delta[0]
             elif (tMax[1] < tMax[2]):
-                pos[1] += step[1]
-                if (pos[1] < 0 or pos[1] >= self.grid_size): break
+                current_voxel[1] += step[1]
+                if (current_voxel[1] < 0 or current_voxel[1] >= self.grid_size): break
                 tMax[1] += delta[1]
             else:
-                pos[2] += step[2]
-                if (pos[2] < 0 or pos[2] >= self.grid_size): break
+                current_voxel[2] += step[2]
+                if (current_voxel[2] < 0 or current_voxel[2] >= self.grid_size): break
                 tMax[2] += delta[2]
-            voxels.append(np.array(pos.astype(np.int32)))
+            voxels.append(current_voxel.copy())
         return voxels
 
     

@@ -89,15 +89,16 @@ class VoxelTracer:
     def ray_aabb(self, ray: Ray, boxMin: np.ndarray, boxMax: np.ndarray) -> tuple[bool, float]:
         """Returns whether a Ray intersects an Axis-aligned Bounding Box (AABB)
         and the time of intersection"""
-        t1 = (boxMin[0] - ray.origin[0]) / ray.norm_dir[0]
-        t2 = (boxMax[0] - ray.origin[0]) / ray.norm_dir[0]
+        inv_dir = 1.0 / ray.norm_dir
+        t1 = (boxMin[0] - ray.origin[0]) * inv_dir[0]
+        t2 = (boxMax[0] - ray.origin[0]) * inv_dir[0]
         
         tmin = min(t1, t2)
         tmax = max(t1, t2)
         
         for axis in range(1, ray.origin.size):
-            t1 = (boxMin[axis] - ray.origin[axis]) / ray.norm_dir[axis]
-            t2 = (boxMax[axis] - ray.origin[axis]) / ray.norm_dir[axis]
+            t1 = (boxMin[axis] - ray.origin[axis]) * inv_dir[axis]
+            t2 = (boxMax[axis] - ray.origin[axis]) * inv_dir[axis]
 
             # Modified from original behavior to handle NaNs
             tmin = max(tmin, min(min(t1, t2), tmax))

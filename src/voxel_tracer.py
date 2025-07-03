@@ -1,6 +1,4 @@
-import math
 import numpy as np
-import pyvista as pv
 from ray import Ray
 
 class VoxelTracer:
@@ -10,7 +8,6 @@ class VoxelTracer:
     grid_min: np.ndarray
     grid_max: np.ndarray
     grid_size: int
-    plotter: pv.Plotter
 
     def __init__(self, cells: int, voxel_size: float):
         self.voxel_grid = np.zeros((cells, cells, cells), dtype=np.float32)
@@ -20,25 +17,8 @@ class VoxelTracer:
         self.grid_min = np.full(3, -voxel_size * cells / 2)
         self.grid_max = np.full(3, voxel_size * cells / 2)
         self.grid_size = cells
-        self.plotter = pv.Plotter()
         
-    def _visualize_grid(self):
-        grid = pv.ImageData()
-        grid.dimensions = np.array(self.voxel_grid.shape) + 1
-        grid.spacing = (self.voxel_size, self.voxel_size, self.voxel_size)
-        grid.origin = self.voxel_origin
-        grid.cell_data['values'] = self.voxel_grid.flatten(order="F")
-
-        self.plotter.add_mesh(grid, show_edges=True)
-        self.plotter.show_grid() # type: ignore
-        self.plotter.show()
-        
-    def _add_line(self, ray: Ray, color: str, reversed=False):
-        rev = -1 if reversed else 1
-        line = pv.Line(ray.origin, ray.origin + ray.norm_dir * 300 * rev)
-        self.plotter.add_mesh(line, color=color, line_width=2)
-        
-    def _add_motion_data(self, voxels: list[np.ndarray], data: float):
+    def add_motion_data(self, voxels: list[np.ndarray], data: float):
         for v in voxels:
             self.voxel_grid[v[0]][v[1]][v[2]] += data
         

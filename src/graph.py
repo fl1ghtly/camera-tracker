@@ -2,8 +2,9 @@ import pyvista as pv
 import numpy as np
 from ray import Ray
 
-SHOW_GRID = True
+SHOW_GRID = False
 SHOW_RAY = True
+POINT_SIZE = 12.
 
 class Graph:
     plotter: pv.Plotter
@@ -22,14 +23,22 @@ class Graph:
             self._create_point_cloud(voxels, origin, size)
     
     def _create_point_cloud(self, voxels: np.ndarray, origin: np.ndarray, size: float):
-        pass
+        # Points are the (x, y, z) of the center of each voxel
+        voxel_center = np.full(3, size / 2)
+        ind = np.nonzero(voxels)
+        points = np.transpose(ind) * size + voxel_center + origin
+
+        cloud = pv.PolyData(points)
+        cloud['Values'] = voxels[voxels != 0]
+        
+        self.plotter.add_points(cloud, render_points_as_spheres=True, point_size=POINT_SIZE)
     
     def _create_grid(self, voxels: np.ndarray, origin: np.ndarray, size: float):
         grid = pv.ImageData()
         grid.dimensions = np.array(voxels.shape) + 1
         grid.spacing = (size, size, size)
         grid.origin = origin
-        grid.cell_data['values'] = voxels.flatten(order="F")
+        grid.cell_data['Values'] = voxels.flatten(order="F")
 
         self.plotter.add_mesh(grid, show_edges=True)
 

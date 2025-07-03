@@ -9,13 +9,13 @@ class VoxelTracer:
     grid_max: np.ndarray
     grid_size: int
 
-    def __init__(self, cells: int, voxel_size: float):
+    def __init__(self, cells: int, voxel_size: float, center=np.zeros(3)):
         self.voxel_grid = np.zeros((cells, cells, cells), dtype=np.float32)
         self.voxel_size = voxel_size
-        bottom_left_corner = -voxel_size / 2 * cells
-        self.voxel_origin = np.full(3, bottom_left_corner)
-        self.grid_min = np.full(3, -voxel_size * cells / 2)
-        self.grid_max = np.full(3, voxel_size * cells / 2)
+        bottom_left_corner = -voxel_size * cells / 2
+        self.voxel_origin = np.full(3, bottom_left_corner) + center
+        self.grid_min = np.full(3, bottom_left_corner + center)
+        self.grid_max = np.full(3, -bottom_left_corner + center)
         self.grid_size = cells
         
     def add_motion_data(self, voxels: list[np.ndarray], data: float):

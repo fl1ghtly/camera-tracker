@@ -33,24 +33,6 @@ def main():
 
         ret, frame = cap.read()
 
-        height, width, _ = frame.shape
-
-        # Camera constants
-        focal_length = (width / 2) / math.tan(math.radians(cam.fov) / 2)
-        # Viewport height constant is an arbitrary value
-        h = math.tan(math.radians(cam.fov) / 2)
-        viewport_height = 1.0 * h * focal_length
-        viewport_width = viewport_height * width / height
-
-        viewport_u = np.array((viewport_width, 0, 0))
-        viewport_v = np.array((0, -viewport_height, 0))
-        
-        pixel_delta_u = viewport_u / width
-        pixel_delta_v = viewport_v / height
-        
-        viewport_upper_left = cam.position - np.array((0, 0, focal_length)) - viewport_u / 2 - viewport_v / 2
-        pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v)
-        
         prev = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         i = 0
         while (ret):
@@ -70,13 +52,13 @@ def main():
             graph.add_ray(Ray(cam.position, cam_dir), '#00FF00', reversed=True)
             
             motion_mask = mf.filter_motion(prev, next, 2)
-            for j in range(height):
-                for i in range(width):
+            for j in range(cam.height):
+                for i in range(cam.width):
                     # Skip pixels with no motion data
                     if motion_mask[j][i] == 0:
                         continue
                     # Cast a ray through the center of the pixel
-                    pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v)
+                    pixel_center = cam.pixel00_loc + (i * cam.pixel_delta_u) + (j * cam.pixel_delta_v)
                     pixel_dir = pixel_center - cam.position
                     pixel_dir = cam_rot @ pixel_dir
                     r = Ray(cam.position, pixel_dir)

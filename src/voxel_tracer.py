@@ -69,7 +69,6 @@ class VoxelTracer:
             voxels.append(current_voxel.copy())
         return voxels
 
-    
     def ray_aabb(self, ray: Ray, boxMin: np.ndarray, boxMax: np.ndarray) -> tuple[bool, float]:
         """Returns whether a Ray intersects an Axis-aligned Bounding Box (AABB)
         and the time of intersection"""
@@ -89,5 +88,7 @@ class VoxelTracer:
             tmax = min(tmax, max(max(t1, t2), tmin))
 
         return tmax > max(tmin, 0.0), tmin
-
     
+    def voxel_to_world(self, voxels: np.ndarray) -> np.ndarray:
+        """Returns the coordinates of the voxel(s) in world space"""
+        return self.grid_min + (voxels + 0.5) * self.voxel_size

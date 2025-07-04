@@ -9,6 +9,7 @@ from graph import Graph
 
 GRID_SIZE = 32
 VOXEL_SIZE = 4.0
+START_FRAME = 5 # START_FRAME >= 0
 
 def main():
     cam_L = Camera((39.694, -211.93, 1.111), 
@@ -19,11 +20,14 @@ def main():
                    (90.267, -0.000012, 128.27), 
                    "./videos/cam_R.mkv",
                    39.6)
-    cameras = [cam_L, cam_R]
+    cam_F = Camera((-133.461, 78.7308, 57.4486),
+                   (69.5268, 0.000026, -120.23),
+                   './videos/cam_F.mkv',
+                   39.6)
+    cameras = [cam_L, cam_R, cam_F]
     
     vt = VoxelTracer(GRID_SIZE, VOXEL_SIZE)
     graph = Graph()
-
     for cam in cameras:
         cap = cv2.VideoCapture(cam.video)
 
@@ -32,7 +36,7 @@ def main():
         height, width, _ = frame.shape
 
         # Camera constants
-        focal_length = 1.0
+        focal_length = (width / 2) / math.tan(math.radians(cam.fov) / 2)
         # Viewport height constant is an arbitrary value
         h = math.tan(math.radians(cam.fov) / 2)
         viewport_height = 1.0 * h * focal_length
@@ -48,9 +52,14 @@ def main():
         pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v)
         
         prev = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        i = 0
         while (ret):
             ret, frame = cap.read()
             if not ret: break
+            # Skip until start frame is reached
+            if i != START_FRAME:
+                i += 1
+                continue
             
             next = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -78,10 +87,11 @@ def main():
                         color = '#FF0000'   # Hit
                     graph.add_ray(r, color)
             prev = next
-            graph.add_voxels(vt.voxel_grid, vt.voxel_origin, VOXEL_SIZE)
             # cv2.imshow(cam.video, motion_mask)
             break
         cap.release()
+    motion_voxels = graph.extract_percentile_index(vt.voxel_grid, 99.9)
+    graph.add_voxels(vt.voxel_grid, vt.voxel_origin, VOXEL_SIZE)
     graph.show()
 
 def rotationMatrix(x, y, z) -> np.ndarray:

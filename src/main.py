@@ -1,4 +1,6 @@
 import math
+import time
+from multiprocessing import Process, Queue
 import cv2
 import numpy as np
 from camera import Camera
@@ -10,6 +12,76 @@ from graph import Graph
 GRID_SIZE = 32
 VOXEL_SIZE = 4.0
 START_FRAME = 5 # START_FRAME >= 0
+
+def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
+    cap = cv2.VideoCapture(cam.video)
+    ret, frame = cap.read()
+
+    prev = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    frame_idx = 0
+    while (ret):
+        ret, frame = cap.read()
+        if not ret: break
+        next = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Get camera direction vector
+        cam_rot = rotationMatrix(*cam.rotation)
+        
+        motion_mask = mf.filter_motion(prev, next, 2)
+        raycast_intersections = []
+        data = []
+        for j in range(cam.height):
+            for i in range(cam.width):
+                # Skip pixels with no motion data
+                if motion_mask[j][i] == 0:
+                    continue
+                # Cast a ray through the center of the pixel
+                pixel_center = cam.pixel00_loc + (i * cam.pixel_delta_u) + (j * cam.pixel_delta_v)
+                pixel_dir = pixel_center - cam.position
+                # Rotate raycast to camera's direction
+                pixel_dir = cam_rot @ pixel_dir
+                r = Ray(cam.position, pixel_dir)
+                voxels = vt.raycast_into_voxels(r)
+                if voxels:
+                    raycast_intersections.append(voxels)
+                    data.append(motion_mask[j][i])
+        queue.put((frame_idx, raycast_intersections, data))
+        frame_idx += 1
+        prev = next
+    cap.release()
+    # End processing
+    queue.put((None, None, None))
+
+def process_collector(num_processes: int, input: Queue, vt: VoxelTracer, graph: Graph):
+    frame_data = {}
+    ended_processes = 0
+    current_frame = 0
+    
+    while True:
+        frame_idx, *values = input.get()
+        
+        if frame_idx is None:
+            ended_processes += 1
+            if ended_processes == num_processes:
+                break   # All processes done
+            continue
+        
+        if frame_idx not in frame_data:
+            frame_data[frame_idx] = []
+        frame_data[frame_idx].append(values)
+        
+        try:
+            if len(frame_data[current_frame]) == num_processes:
+                for value in frame_data[current_frame]:
+                    vt.add_motion_data(*value)
+                graph.add_voxels(vt.voxel_grid, vt.voxel_origin, VOXEL_SIZE)
+                graph.update()
+                vt.clear_motion_data()
+                del frame_data[current_frame]
+                current_frame += 1
+                time.sleep(1/30)
+        except KeyError:
+            continue
 
 def main():
     cam_L = Camera((39.694, -211.93, 1.111), 
@@ -24,57 +96,30 @@ def main():
                    (69.5268, 0.000026, -120.23),
                    './videos/cam_F.mkv',
                    39.6)
-    cameras = [cam_L, cam_R, cam_F]
-    
+    cams = [cam_L, cam_R, cam_F]
+    queue = Queue()
     vt = VoxelTracer(GRID_SIZE, VOXEL_SIZE)
     graph = Graph()
-    for cam in cameras:
-        cap = cv2.VideoCapture(cam.video)
 
-        ret, frame = cap.read()
-
-        prev = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        i = 0
-        while (ret):
-            ret, frame = cap.read()
-            if not ret: break
-            # Skip until start frame is reached
-            if i != START_FRAME:
-                i += 1
-                continue
-            
-            next = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            # Get camera direction vector
-            cam_rot = rotationMatrix(*cam.rotation)
-            cam_dir = cam_rot @ np.array((0, 0, 1))
-            # Add green line representing camera direction in world space
-            graph.add_ray(Ray(cam.position, cam_dir), '#00FF00', reversed=True)
-            
-            motion_mask = mf.filter_motion(prev, next, 2)
-            for j in range(cam.height):
-                for i in range(cam.width):
-                    # Skip pixels with no motion data
-                    if motion_mask[j][i] == 0:
-                        continue
-                    # Cast a ray through the center of the pixel
-                    pixel_center = cam.pixel00_loc + (i * cam.pixel_delta_u) + (j * cam.pixel_delta_v)
-                    pixel_dir = pixel_center - cam.position
-                    pixel_dir = cam_rot @ pixel_dir
-                    r = Ray(cam.position, pixel_dir)
-                    voxels = vt.raycast_into_voxels(r)
-                    color = '#0000FF'   # Miss
-                    if voxels:
-                        vt.add_motion_data(voxels, motion_mask[j][i])
-                        color = '#FF0000'   # Hit
-                    graph.add_ray(r, color)
-            prev = next
-            # cv2.imshow(cam.video, motion_mask)
-            break
-        cap.release()
-    motion_voxels = graph.extract_percentile_index(vt.voxel_grid, 99.9)
-    graph.add_voxels(vt.voxel_grid, vt.voxel_origin, VOXEL_SIZE)
+    processes = [Process(target=process_camera, args=(cam, vt, queue)) 
+               for i, cam in enumerate(cams)]
+    
+    for cam in cams:
+        cam_rot = rotationMatrix(*cam.rotation)
+        cam_dir = cam_rot @ np.array((0, 0, 1))
+        # Add green line representing camera direction in world space
+        graph.add_ray(Ray(cam.position, cam_dir), '#00FF00', reversed=True)
     graph.show()
+
+    for p in processes:
+        p.start()
+
+    process_collector(len(cams), queue, vt, graph)
+
+    for p in processes:
+        p.join()
+
+    motion_voxels = graph.extract_percentile_index(vt.voxel_grid, 99.9)
 
 def rotationMatrix(x, y, z) -> np.ndarray:
     """Converts from Euler Angles (XYZ order) to a vector"""

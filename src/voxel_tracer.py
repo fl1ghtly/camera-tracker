@@ -18,12 +18,16 @@ class VoxelTracer:
         self.grid_max = np.full(3, -bottom_left_corner + center)
         self.grid_size = cells
         
-    def add_motion_data(self, voxels: list[np.ndarray], data: float):
-        for v in voxels:
-            self.voxel_grid[v[0]][v[1]][v[2]] += data
+    def add_motion_data(self, raycasts: list[list[np.ndarray]], data: list[float]):
+        for i, voxels in enumerate(raycasts):
+            for v in voxels:
+                self.voxel_grid[v[0]][v[1]][v[2]] += data[i]
+            
+    def clear_motion_data(self) -> None:
+        self.voxel_grid = np.zeros((self.grid_size, self.grid_size, self.grid_size), dtype=np.float32)
         
     def raycast_into_voxels(self, ray: Ray) -> list[np.ndarray]:
-        """Returns all voxel indexes intersected by the raycast"""
+        """Returns a list of all voxel indices intersected by the raycast"""
         # Check if ray intersects voxel grid
         intersected, t_entry = self.ray_aabb(ray, self.grid_min, self.grid_max)
         if not intersected: return []

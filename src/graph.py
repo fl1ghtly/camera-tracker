@@ -15,7 +15,10 @@ class Graph:
         
     def show(self) -> None:
         self.plotter.show_grid() # type: ignore
-        self.plotter.show()
+        self.plotter.show(interactive_update=True)
+        
+    def update(self) -> None:
+        self.plotter.update()
         
     def add_voxels(self, voxels: np.ndarray, origin: np.ndarray, size: float) -> None:
         if SHOW_GRID:
@@ -43,13 +46,17 @@ class Graph:
             ind = np.nonzero(voxels)
         points = np.transpose(ind) * size + voxel_center + origin
 
+        if len(points) <= 0:
+            return
+
         cloud = pv.PolyData(points)
         cloud['Values'] = voxels[ind]
         
         self.plotter.add_points(cloud, 
                                 render_points_as_spheres=True,
                                 # opacity='geom',
-                                point_size=POINT_SIZE)
+                                point_size=POINT_SIZE,
+                                name="point_cloud")
     
     def _create_grid(self, voxels: np.ndarray, origin: np.ndarray, size: float):
         grid = pv.ImageData()

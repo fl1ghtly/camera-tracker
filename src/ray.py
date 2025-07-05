@@ -1,5 +1,14 @@
 import numpy as np
+from numba import njit, float64
+from numba.experimental import jitclass
 
+spec = [
+    ('origin', float64[:]),
+    ('dir', float64[:]),
+    ('norm_dir', float64[:])
+]
+
+@jitclass(spec) # type: ignore
 class Ray:
     # Vector describing position of ray
     origin: np.ndarray
@@ -12,7 +21,8 @@ class Ray:
         self.origin = ro
         self.dir = rd
         self.norm_dir = normalize(rd)
-    
+
+@njit
 def normalize(vector: np.ndarray) -> np.ndarray:
         """Returns the normalized vector"""
         norm = np.linalg.norm(vector)

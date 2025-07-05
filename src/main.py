@@ -1,6 +1,6 @@
 import math
-import time
 from multiprocessing import Process, Queue
+from queue import Empty
 import cv2
 import numpy as np
 from camera import Camera
@@ -11,7 +11,7 @@ from graph import Graph
 
 GRID_SIZE = 32
 VOXEL_SIZE = 4.0
-START_FRAME = 5 # START_FRAME >= 0
+END_FRAME = 50
 
 def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
     cap = cv2.VideoCapture(cam.video)
@@ -22,6 +22,8 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
     while (ret):
         ret, frame = cap.read()
         if not ret: break
+        if frame_idx >= END_FRAME:
+            break
         next = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # Get camera direction vector
@@ -51,14 +53,17 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
     cap.release()
     # End processing
     queue.put((None, None, None))
-
-def process_collector(num_processes: int, input: Queue, vt: VoxelTracer, graph: Graph):
+    
+def process_collector(num_processes: int, input: Queue, output: Queue, vt: VoxelTracer):
     frame_data = {}
     ended_processes = 0
     current_frame = 0
     
     while True:
-        frame_idx, *values = input.get()
+        try:
+            frame_idx, *values = input.get_nowait()
+        except Empty:
+            continue
         
         if frame_idx is None:
             ended_processes += 1
@@ -74,12 +79,11 @@ def process_collector(num_processes: int, input: Queue, vt: VoxelTracer, graph: 
             if len(frame_data[current_frame]) == num_processes:
                 for value in frame_data[current_frame]:
                     vt.add_motion_data(*value)
-                graph.add_voxels(vt.voxel_grid, vt.voxel_origin, VOXEL_SIZE)
-                graph.update()
+                output.put(vt.voxel_grid)
                 vt.clear_motion_data()
                 del frame_data[current_frame]
                 current_frame += 1
-                time.sleep(1/30)
+                # time.sleep(1/60)
         except KeyError:
             continue
 
@@ -97,12 +101,16 @@ def main():
                    './videos/cam_F.mkv',
                    39.6)
     cams = [cam_L, cam_R, cam_F]
-    queue = Queue()
+    input = Queue(5 * len(cams))
+    output = Queue(5)
     vt = VoxelTracer(GRID_SIZE, VOXEL_SIZE)
     graph = Graph()
 
-    processes = [Process(target=process_camera, args=(cam, vt, queue)) 
-               for i, cam in enumerate(cams)]
+    processes = [Process(target=process_camera, args=(cam, vt, input)) 
+                for cam in cams]
+    
+    collector = Process(target=process_collector,
+                        args=(len(cams), input, output, vt))
     
     for cam in cams:
         cam_rot = rotationMatrix(*cam.rotation)
@@ -113,13 +121,17 @@ def main():
 
     for p in processes:
         p.start()
-
-    process_collector(len(cams), queue, vt, graph)
+    collector.start()
+    
+    # process_collector(len(cams), queue, vt)
+    while any(p.is_alive() for p in processes):
+        graph.add_voxels(output.get(), vt.voxel_origin, VOXEL_SIZE)
+        graph.update()
 
     for p in processes:
         p.join()
 
-    motion_voxels = graph.extract_percentile_index(vt.voxel_grid, 99.9)
+    # motion_voxels = graph.extract_percentile_index(vt.voxel_grid, 99.9)
 
 def rotationMatrix(x, y, z) -> np.ndarray:
     """Converts from Euler Angles (XYZ order) to a vector"""
@@ -149,3 +161,8 @@ def rotationMatrix(x, y, z) -> np.ndarray:
 
 if __name__ == "__main__":
     main()
+    '''
+    cProfile.run("main()", "stats")
+    p = pstats.Stats('stats')
+    p.strip_dirs().sort_stats(pstats.SortKey.TIME).print_stats(50)
+    '''

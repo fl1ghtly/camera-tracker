@@ -19,10 +19,8 @@ class VoxelTracer:
         self.grid_max = np.full(3, -bottom_left_corner + center)
         self.grid_size = cells
         
-    def add_motion_data(self, raycasts: list[list[np.ndarray]], data: list[float]):
-        for i, voxels in enumerate(raycasts):
-            for v in voxels:
-                self.voxel_grid[v[0]][v[1]][v[2]] += data[i]
+    def add_motion_data(self, voxels: np.ndarray, data: np.ndarray):
+        self.voxel_grid[voxels[..., 0], voxels[..., 1], voxels[..., 2]] += data
             
     def clear_motion_data(self) -> None:
         self.voxel_grid = np.zeros((self.grid_size, 

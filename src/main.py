@@ -47,9 +47,12 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
             voxels = vt.raycast_into_voxels(r)
             if voxels:
                 raycast_intersections.append(voxels)
-                data.append(motion_mask[ind[j][1], ind[j][0]])
+                d = np.full(len(voxels), motion_mask[ind[j][1], ind[j][0]])
+                data.append(d)
 
-        queue.put((frame_idx, raycast_intersections, data))
+        queue.put((frame_idx, 
+                   np.vstack(raycast_intersections), 
+                   np.hstack(data)))
         frame_idx += 1
         prev = next
     # End processing
@@ -164,8 +167,3 @@ def rotationMatrix(x: float, y: float, z: float) -> np.ndarray:
 
 if __name__ == "__main__":
     main()
-    '''
-    cProfile.run("main()", "stats")
-    p = pstats.Stats('stats')
-    p.strip_dirs().sort_stats(pstats.SortKey.TIME).print_stats(50)
-    '''

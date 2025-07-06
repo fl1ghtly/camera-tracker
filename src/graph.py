@@ -30,7 +30,10 @@ class Graph:
         if not SHOW_RAY: return
         rev = -1 if reversed else 1
         line = pv.Line(ray.origin, ray.origin + ray.norm_dir * 300 * rev)
-        self.plotter.add_mesh(line, color=color, line_width=2)      
+        self.plotter.add_mesh(line, 
+                              color=color, 
+                              line_width=2,
+                              reset_camera=False)      
         
     def extract_percentile_index(self, data: np.ndarray, percentile: float):
         """Returns the indices of all data points above a certain percentile"""
@@ -56,7 +59,8 @@ class Graph:
                                 render_points_as_spheres=True,
                                 # opacity='geom',
                                 point_size=POINT_SIZE,
-                                name="point_cloud")
+                                name="point_cloud",
+                                reset_camera=False)
     
     def _create_grid(self, voxels: np.ndarray, origin: np.ndarray, size: float):
         grid = pv.ImageData()
@@ -65,4 +69,4 @@ class Graph:
         grid.origin = origin
         grid.cell_data['Values'] = voxels.flatten(order="F")
 
-        self.plotter.add_mesh(grid, show_edges=True)
+        self.plotter.add_mesh(grid, show_edges=True, reset_camera=False)

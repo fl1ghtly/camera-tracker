@@ -45,10 +45,11 @@ class VoxelTracer:
     @staticmethod
     @njit
     def _raycast_numba(ray: Ray, grid_min: np.ndarray, 
-                       grid_max: np.ndarray, grid_size: int, voxel_size: float) -> list[np.ndarray]:
+                       grid_max: np.ndarray, grid_size: int, 
+                       voxel_size: float) -> list[np.ndarray]:
         voxels = [np.array((x, x, x)).astype(np.int32) for x in range(0)]
         # Check if ray intersects voxel grid
-        container = np.zeros(1)
+        container = np.zeros(1)     # workaround for returning multiple types for numba
         intersected = ray_aabb(ray, grid_min, grid_max, container)
         if not intersected: return voxels
         t_entry = container[0]

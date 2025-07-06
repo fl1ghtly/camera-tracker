@@ -3,6 +3,8 @@ from multiprocessing import Process, Queue
 from queue import Empty
 import cv2
 import numpy as np
+from numba import njit
+from decord import VideoReader, cpu
 from camera import Camera
 import motion_filter as mf
 from voxel_tracer import VoxelTracer
@@ -14,43 +16,41 @@ VOXEL_SIZE = 4.0
 END_FRAME = 50
 
 def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
-    cap = cv2.VideoCapture(cam.video)
-    ret, frame = cap.read()
+    vr = VideoReader(cam.video, cpu(0))
 
-    prev = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Get camera direction vector
+    cam_rot = rotationMatrix(*cam.rotation)
+
+    prev = cv2.cvtColor(vr[0].asnumpy(), cv2.COLOR_BGR2GRAY)
     frame_idx = 0
-    while (ret):
-        ret, frame = cap.read()
-        if not ret: break
+
+    for i in range(1, len(vr)):
+        frame = vr[i].asnumpy()
         if frame_idx >= END_FRAME:
             break
         next = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        # Get camera direction vector
-        cam_rot = rotationMatrix(*cam.rotation)
         
         motion_mask = mf.filter_motion(prev, next, 2)
         raycast_intersections = []
         data = []
-        for j in range(cam.height):
-            for i in range(cam.width):
-                # Skip pixels with no motion data
-                if motion_mask[j][i] == 0:
-                    continue
-                # Cast a ray through the center of the pixel
-                pixel_center = cam.pixel00_loc + (i * cam.pixel_delta_u) + (j * cam.pixel_delta_v)
-                pixel_dir = pixel_center - cam.position
-                # Rotate raycast to camera's direction
-                pixel_dir = cam_rot @ pixel_dir
-                r = Ray(cam.position, pixel_dir)
-                voxels = vt.raycast_into_voxels(r)
-                if voxels:
-                    raycast_intersections.append(voxels)
-                    data.append(motion_mask[j][i])
+        
+        ind = cv2.findNonZero(motion_mask)
+        if ind is None: continue
+        ind = ind.squeeze()
+        pixel_centers = (cam.pixel00_loc 
+                         + (ind[:, 0:1] * cam.pixel_delta_u) 
+                         + (ind[:, 1:2] * cam.pixel_delta_v))
+        pixel_dirs = (pixel_centers - cam.position) @ cam_rot.T
+        for i, pixel_dir in enumerate(pixel_dirs):
+            r = Ray(cam.position, pixel_dir)
+            voxels = vt.raycast_into_voxels(r)
+            if voxels:
+                raycast_intersections.append(voxels)
+                data.append(motion_mask[ind[i][1], ind[i][0]])
+
         queue.put((frame_idx, raycast_intersections, data))
         frame_idx += 1
         prev = next
-    cap.release()
     # End processing
     queue.put((None, None, None))
     
@@ -83,7 +83,6 @@ def process_collector(num_processes: int, input: Queue, output: Queue, vt: Voxel
                 vt.clear_motion_data()
                 del frame_data[current_frame]
                 current_frame += 1
-                # time.sleep(1/60)
         except KeyError:
             continue
 
@@ -101,8 +100,8 @@ def main():
                    './videos/cam_F.mkv',
                    39.6)
     cams = [cam_L, cam_R, cam_F]
-    input = Queue(5 * len(cams))
-    output = Queue(5)
+    input = Queue()
+    output = Queue()
     vt = VoxelTracer(GRID_SIZE, VOXEL_SIZE)
     graph = Graph()
 
@@ -123,18 +122,21 @@ def main():
         p.start()
     collector.start()
     
-    # process_collector(len(cams), queue, vt)
     while any(p.is_alive() for p in processes):
-        graph.add_voxels(output.get(), vt.voxel_origin, VOXEL_SIZE)
-        graph.update()
+        try:
+            graph.add_voxels(output.get_nowait(), vt.voxel_origin, VOXEL_SIZE)
+            graph.update()
+        except Empty:
+            continue
 
     for p in processes:
         p.join()
 
     # motion_voxels = graph.extract_percentile_index(vt.voxel_grid, 99.9)
 
-def rotationMatrix(x, y, z) -> np.ndarray:
-    """Converts from Euler Angles (XYZ order) to a vector"""
+@njit
+def rotationMatrix(x: float, y: float, z: float) -> np.ndarray:
+    """Converts from Euler Angles (XYZ order) to a rotation matrix"""
     # Calculate trig values once
     cx = math.cos(x)
     sx = math.sin(x)
@@ -144,15 +146,15 @@ def rotationMatrix(x, y, z) -> np.ndarray:
     sz = math.sin(z)
 
     # Form individual rotation matrices
-    rx = np.array([[1, 0, 0],
-                    [0, cx, -sx],
-                    [0, sx, cx]])
-    ry = np.array([[cy, 0, sy],
-                    [0, 1, 0],
-                    [-sy, 0, cy]])
-    rz = np.array([[cz, -sz, 0],
-                    [sz, cz, 0],
-                    [0, 0, 1]])
+    rx = np.array([[1., 0., 0.],
+                    [0., cx, -sx],
+                    [0., sx, cx]])
+    ry = np.array([[cy, 0., sy],
+                    [0., 1., 0.],
+                    [-sy, 0., cy]])
+    rz = np.array([[cz, -sz, 0.],
+                    [sz, cz, 0.],
+                    [0., 0., 1.]])
 
     # Form the final rotation matrix
     r = rz @ ry @ rx

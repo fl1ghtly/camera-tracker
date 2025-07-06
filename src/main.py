@@ -51,7 +51,7 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
                 data.append(d)
 
         queue.put((frame_idx, 
-                   np.vstack(raycast_intersections), 
+                   np.concatenate(raycast_intersections),
                    np.hstack(data)))
         frame_idx += 1
         prev = next

@@ -13,7 +13,6 @@ from graph import Graph
 
 GRID_SIZE = 32
 VOXEL_SIZE = 4.0
-END_FRAME = 50
 
 def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
     vr = VideoReader(cam.video, cpu(0))
@@ -26,27 +25,29 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
 
     for i in range(1, len(vr)):
         frame = vr[i].asnumpy()
-        if frame_idx >= END_FRAME:
-            break
         next = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
         motion_mask = mf.filter_motion(prev, next, 2)
-        raycast_intersections = []
-        data = []
         
         ind = cv2.findNonZero(motion_mask)
-        if ind is None: continue
+        if ind is None: continue    # Skip frames without motion
         ind = ind.squeeze()
+        ind = ind.reshape((-1, 2))  # Handle cases with only 1 coordinate pair
+
+        raycast_intersections = []
+        data = []
+
         pixel_centers = (cam.pixel00_loc 
-                         + (ind[:, 0:1] * cam.pixel_delta_u) 
-                         + (ind[:, 1:2] * cam.pixel_delta_v))
+                        + (ind[..., 0:1] * cam.pixel_delta_u) 
+                        + (ind[..., 1:2] * cam.pixel_delta_v))
         pixel_dirs = (pixel_centers - cam.position) @ cam_rot.T
-        for i, pixel_dir in enumerate(pixel_dirs):
+        
+        for j, pixel_dir in enumerate(pixel_dirs):
             r = Ray(cam.position, pixel_dir)
             voxels = vt.raycast_into_voxels(r)
             if voxels:
                 raycast_intersections.append(voxels)
-                data.append(motion_mask[ind[i][1], ind[i][0]])
+                data.append(motion_mask[ind[j][1], ind[j][0]])
 
         queue.put((frame_idx, raycast_intersections, data))
         frame_idx += 1

@@ -3,7 +3,7 @@ import numpy as np
 from ray import Ray
 
 SHOW_GRID = False
-SHOW_RAY = False
+SHOW_RAY = True
 SHOW_TOP_PERCENTILE = False
 POINT_SIZE = 12.
 

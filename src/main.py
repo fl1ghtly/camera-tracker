@@ -120,6 +120,8 @@ def main():
         cam_dir = cam_rot @ np.array((0, 0, 1))
         # Add green line representing camera direction in world space
         graph.add_ray(Ray(cam.position, cam_dir), '#00FF00', reversed=True)
+        # Add yellow line representing the direction to the origin from the camera
+        graph.add_ray(Ray(cam.position, cam.position - np.array((0, 0, 0))), '#FFFF00', reversed=True)
     graph.show()
 
     for p in processes:

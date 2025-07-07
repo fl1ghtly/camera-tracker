@@ -10,6 +10,13 @@ spec = [
 
 @jitclass(spec) # type: ignore
 class Ray:
+    """Contains information about 1 ray with dimension M
+    
+    Attributes:
+        origin: Ray Origin (1, M)
+        dir: Ray Direction (1, M)
+        norm_dir: Normalized Ray Direction (1, M)
+    """
     # Vector describing position of ray
     origin: np.ndarray
     # Vector describing direction of ray
@@ -24,7 +31,14 @@ class Ray:
 
 @njit
 def normalize(vector: np.ndarray) -> np.ndarray:
-        """Returns the normalized vector"""
+        """Returns the normalized vector(s)
+        
+        Args:
+            vector: (N, M) vector(s) that need to be normalized
+            
+        Returns:
+            The normalized vector(s)
+        """
         norm = np.linalg.norm(vector)
         if norm == 0:
             return vector

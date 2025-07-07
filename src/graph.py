@@ -17,7 +17,12 @@ class Graph:
         self.plotter.show_grid() # type: ignore
         self.plotter.show(interactive_update=True)
         
-    def update(self) -> None:
+    def update(self, title: str | None = None) -> None:
+        """Updates the plot. Optional argument to change the title
+        Note: Changing the title frequently will slow down the speed
+        of updates"""
+        if title is not None:
+            self.plotter.add_title(title)
         self.plotter.update()
         
     def add_voxels(self, voxels: np.ndarray, origin: np.ndarray, size: float) -> None:

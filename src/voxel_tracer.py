@@ -11,7 +11,7 @@ class VoxelTracer:
     grid_size: int
 
     def __init__(self, cells: int, voxel_size: float, center=np.zeros(3)):
-        self.voxel_grid = np.zeros((cells, cells, cells), dtype=np.float32)
+        self.voxel_grid = np.zeros((cells, cells, cells), dtype=np.uint32)
         self.voxel_size = voxel_size
         bottom_left_corner = -voxel_size * cells / 2
         self.voxel_origin = np.full(3, bottom_left_corner) + center
@@ -19,14 +19,16 @@ class VoxelTracer:
         self.grid_max = np.full(3, -bottom_left_corner + center)
         self.grid_size = cells
         
-    def add_motion_data(self, voxels: np.ndarray, data: np.ndarray):
+    def add_grid_data(self, voxels: np.ndarray, data: np.ndarray):
+        """Adds data (N, ) to every Voxel (N, 3) in the Voxel Grid"""
         self.voxel_grid[voxels[..., 0], voxels[..., 1], voxels[..., 2]] += data
             
-    def clear_motion_data(self) -> None:
+    def clear_grid_data(self) -> None:
+        """Resets the Voxel Grid data to zero"""
         self.voxel_grid = np.zeros((self.grid_size, 
                                     self.grid_size, 
                                     self.grid_size), 
-                                   dtype=np.float32)
+                                   dtype=np.uint32)
         
     def raycast_into_voxels(self, ray: Ray) -> list[np.ndarray]:
         """Returns a list of all voxel indices intersected by the raycast"""

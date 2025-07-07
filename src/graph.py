@@ -10,8 +10,8 @@ POINT_SIZE = 12.
 class Graph:
     plotter: pv.Plotter
     
-    def __init__(self) -> None:
-        self.plotter = pv.Plotter()
+    def __init__(self, *args, **kwargs) -> None:
+        self.plotter = pv.Plotter(*args, **kwargs)
         
     def show(self) -> None:
         self.plotter.show_grid() # type: ignore
@@ -24,6 +24,21 @@ class Graph:
         if title is not None:
             self.plotter.add_title(title)
         self.plotter.update()
+        
+    def start_gif(self, file: str):
+        """Start creating a gif of the plot
+
+        Args:
+            file (str): File name
+        """
+        self.plotter.open_gif(file)
+
+    def write_frame(self):
+        """Write a frame to the gif"""
+        self.plotter.write_frame()
+        
+    def close_gif(self):
+        self.plotter.close()
         
     def add_voxels(self, voxels: np.ndarray, origin: np.ndarray, size: float) -> None:
         if SHOW_GRID:

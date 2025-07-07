@@ -20,10 +20,10 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
     # Get camera direction vector
     cam_rot = rotationMatrix(*cam.rotation)
 
-    prev = cv2.cvtColor(vr[0].asnumpy(), cv2.COLOR_BGR2GRAY)
     frame_idx = 0
+    prev = cv2.cvtColor(vr[frame_idx].asnumpy(), cv2.COLOR_BGR2GRAY)
 
-    for i in range(1, len(vr)):
+    for i in range(frame_idx + 1, len(vr)):
         frame = vr[i].asnumpy()
         next = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         

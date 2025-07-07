@@ -29,6 +29,30 @@ class Ray:
         self.dir = rd
         self.norm_dir = normalize(rd)
 
+class Rays:
+    """Contains information about N rays with dimension M
+    
+    Attributes:
+        origins: Array of Ray Origins (N, M)
+        dirs: Array of Ray Directions (N, M)
+        norm_dirs: Array of Normalized Ray Directions
+        accum: Data each Ray needs to accumulate (N, )
+    """
+    # (N, 3)
+    origins: np.ndarray
+    # (N, 3)
+    dirs: np.ndarray
+    # (N, 3)
+    norm_dirs: np.ndarray
+    # (N, )
+    accumulation: np.ndarray
+    
+    def __init__(self, ro: np.ndarray, rd: np.ndarray, accum: np.ndarray):
+        self.origins = ro
+        self.dirs = rd
+        self.norm_dirs = normalize(rd)
+        self.accumulation = accum
+        
 @njit
 def normalize(vector: np.ndarray) -> np.ndarray:
         """Returns the normalized vector(s)

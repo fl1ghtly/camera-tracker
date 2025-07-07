@@ -8,11 +8,12 @@ from decord import VideoReader, cpu
 from camera import Camera
 import motion_filter as mf
 from voxel_tracer import VoxelTracer
-from ray import Ray
+from ray import Ray, Rays
 from graph import Graph
 
 GRID_SIZE = 32
 VOXEL_SIZE = 4.0
+START_FRAME = 0
 
 def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
     vr = VideoReader(cam.video, cpu(0))
@@ -20,7 +21,7 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
     # Get camera direction vector
     cam_rot = rotationMatrix(*cam.rotation)
 
-    frame_idx = 0
+    frame_idx = START_FRAME
     prev = cv2.cvtColor(vr[frame_idx].asnumpy(), cv2.COLOR_BGR2GRAY)
 
     for i in range(frame_idx + 1, len(vr)):
@@ -33,6 +34,8 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
         if ind is None: continue    # Skip frames without motion
         ind = ind.squeeze()
         ind = ind.reshape((-1, 2))  # Handle cases with only 1 coordinate pair
+        x = ind[:, 0]
+        y = ind[:, 1]
 
         raycast_intersections = []
         data = []
@@ -41,18 +44,13 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
                         + (ind[..., 0:1] * cam.pixel_delta_u) 
                         + (ind[..., 1:2] * cam.pixel_delta_v))
         pixel_dirs = (pixel_centers - cam.position) @ cam_rot.T
-        
-        for j, pixel_dir in enumerate(pixel_dirs):
-            r = Ray(cam.position, pixel_dir)
-            voxels = vt.raycast_into_voxels(r)
-            if voxels:
-                raycast_intersections.append(voxels)
-                d = np.full(len(voxels), motion_mask[ind[j][1], ind[j][0]])
-                data.append(d)
+
+        r = Rays(np.tile(cam.position, (len(pixel_dirs), 1)), pixel_dirs, motion_mask[y, x]) # type: ignore
+        raycast_intersections, data = vt.raycast_into_voxels_batch(r)
 
         queue.put((frame_idx, 
-                   np.concatenate(raycast_intersections),
-                   np.hstack(data)))
+                   raycast_intersections,
+                   data))
         frame_idx += 1
         prev = next
     # End processing
@@ -61,7 +59,7 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
 def process_collector(num_processes: int, input: Queue, output: Queue, vt: VoxelTracer):
     frame_data = {}
     ended_processes = 0
-    current_frame = 0
+    current_frame = START_FRAME
     
     while True:
         try:
@@ -72,6 +70,7 @@ def process_collector(num_processes: int, input: Queue, output: Queue, vt: Voxel
         if frame_idx is None:
             ended_processes += 1
             if ended_processes == num_processes:
+                output.put((None, None))
                 break   # All processes done
             continue
         
@@ -82,9 +81,9 @@ def process_collector(num_processes: int, input: Queue, output: Queue, vt: Voxel
         try:
             if len(frame_data[current_frame]) == num_processes:
                 for value in frame_data[current_frame]:
-                    vt.add_motion_data(*value)
-                output.put(vt.voxel_grid)
-                vt.clear_motion_data()
+                    vt.add_grid_data(*value)
+                output.put((current_frame, vt.voxel_grid))
+                vt.clear_grid_data()
                 del frame_data[current_frame]
                 current_frame += 1
         except KeyError:
@@ -115,6 +114,10 @@ def main():
     collector = Process(target=process_collector,
                         args=(len(cams), input, output, vt))
     
+    for p in processes:
+        p.start()
+    collector.start()
+
     for cam in cams:
         cam_rot = rotationMatrix(*cam.rotation)
         cam_dir = cam_rot @ np.array((0, 0, 1))
@@ -123,15 +126,13 @@ def main():
         # Add yellow line representing the direction to the origin from the camera
         graph.add_ray(Ray(cam.position, cam.position - np.array((0, 0, 0))), '#FFFF00', reversed=True)
     graph.show()
-
-    for p in processes:
-        p.start()
-    collector.start()
     
-    while any(p.is_alive() for p in processes):
+    while True:
         try:
-            graph.add_voxels(output.get_nowait(), vt.voxel_origin, VOXEL_SIZE)
-            graph.update()
+            frame, values = output.get_nowait()
+            if frame is None: break
+            graph.add_voxels(values, vt.voxel_origin, VOXEL_SIZE)
+            graph.update(f'Current Frame: {frame}')
         except Empty:
             continue
 

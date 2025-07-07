@@ -1,7 +1,8 @@
 import numpy as np
 from numba import njit
-from ray import Ray
+from ray import Ray, Rays
 
+MAX_RAY_STEPS = 512
 class VoxelTracer:
     voxel_grid: np.ndarray
     voxel_size: float
@@ -37,6 +38,14 @@ class VoxelTracer:
                                    self.grid_max, 
                                    self.grid_size, 
                                    self.voxel_size)
+        
+    def raycast_into_voxels_batch(self, rays: Rays) -> tuple[np.ndarray, np.ndarray]:
+        """Returns a list of all voxel indices intersected by every raycast"""
+        return self._raycast_batch(rays, 
+                                   self.grid_min, 
+                                   self.grid_max, 
+                                   self.grid_size, 
+                                   self.voxel_size)
 
     def voxel_to_world(self, voxels: np.ndarray) -> np.ndarray:
         """Returns the coordinates of the voxel(s) in world space"""
@@ -58,7 +67,7 @@ class VoxelTracer:
         start = ray.origin + ray.norm_dir * max(t_entry, 0.0)
 
         # Traversal constants
-        step = np.sign(ray.norm_dir)
+        step = np.sign(ray.norm_dir).astype(np.int32)
         delta = voxel_size / np.abs(ray.norm_dir)
         
         # Indices of current voxel
@@ -94,6 +103,56 @@ class VoxelTracer:
                 tMax[2] += delta[2]
             voxels.append(current_voxel.copy())
         return voxels
+    
+    @staticmethod
+    def _raycast_batch(rays: Rays, grid_min: np.ndarray, 
+                       grid_max: np.ndarray, grid_size: int, 
+                       voxel_size: float) -> tuple[np.ndarray, np.ndarray]:
+        voxels = [np.array((x, x, x)).astype(np.int32) for x in range(0)]
+
+        # Check if ray intersects voxel grid
+        intersected, t_entry = ray_aabb_batch(rays, grid_min, grid_max)
+
+        # Initialization
+        # Array Floating point representation of grid entry position
+        starts = rays.origins + rays.norm_dirs * np.clip(t_entry, 0, None)[:, np.newaxis]
+        # Filter out rays that don't intersect with the grid
+        starts = starts[intersected]
+
+        # Traversal constants
+        steps = np.sign(rays.norm_dirs).astype(np.int32)
+        deltas = voxel_size / np.abs(rays.norm_dirs)
+        
+        # Indices of current voxel
+        current_voxels = np.floor((starts - grid_min) / voxel_size).astype(np.int32)
+        # Clamp current voxel to grid
+        current_voxels = np.clip(current_voxels, 0, grid_size - 1)
+
+        # Get next voxel boundary
+        next_voxels = grid_min + (current_voxels + (steps > 0)) * voxel_size
+
+        # Calculate tMax, distance to the next voxel boundary for each axis
+        tMax = (next_voxels - rays.origins) / rays.norm_dirs
+        # Handle division by zero
+        # tMax[rays.norm_dirs == 0] = np.inf
+
+        # Traversal
+        voxels.append(current_voxels.copy())
+        data = [rays.accumulation]
+        # Get the number of rows
+        n = len(current_voxels)
+        for _ in range(MAX_RAY_STEPS):
+            # Find which axis has the smallest tMax and traverse on that axis
+            ind = np.argmin(tMax, axis=1)
+            current_voxels[np.arange(n), ind] += steps[np.arange(n), ind]
+            inside_grid = np.all((current_voxels >= 0) & (current_voxels < grid_size), 
+                                 axis=1)
+            if np.all(inside_grid == False): break
+            # Add delta to tMax only for rows that are inside the grid
+            tMax[np.where(inside_grid)[0], ind[inside_grid]] += deltas[np.where(inside_grid)[0], ind[inside_grid]]
+            voxels.append(current_voxels.copy()[inside_grid])
+            data.append(rays.accumulation[inside_grid])
+        return np.concatenate(voxels), np.concatenate(data)
 
 @njit
 def ray_aabb(ray: Ray, boxMin: np.ndarray, boxMax: np.ndarray, t_entry: np.ndarray) -> bool:
@@ -117,3 +176,34 @@ def ray_aabb(ray: Ray, boxMin: np.ndarray, boxMax: np.ndarray, t_entry: np.ndarr
     t_entry[0] = tmin
     return tmax > max(tmin, 0.0)
     
+def ray_aabb_batch(rays: Rays, boxMin: np.ndarray, boxMax: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Returns whether the rays intersects an Axis-aligned Bounding Box (AABB)
+    and the time of intersection
+    
+    Args:
+        rays: Collection of rays
+        boxMin: The bottom left corner of the box
+        boxMax: The upper right corner of the box
+    Returns:
+        A boolean array whether each ray intersected the box
+        The entry time for each ray to reach the grid if intersected
+    """
+    inv_dirs = 1.0 / rays.norm_dirs
+    t1 = (boxMin[0] - rays.origins[:, 0]) * inv_dirs[:, 0]
+    t2 = (boxMax[0] - rays.origins[:, 0]) * inv_dirs[:, 0]
+    
+    # Calculate min and max for every column pair of t1 and t2
+    tmin = np.min(np.vstack((t1, t2)), axis=0)
+    tmax = np.max(np.vstack((t1, t2)), axis=0)
+    
+    for axis in range(1, 3):
+        t1 = (boxMin[axis] - rays.origins[:, axis]) * inv_dirs[:, axis]
+        t2 = (boxMax[axis] - rays.origins[:, axis]) * inv_dirs[:, axis]
+
+        dmin = np.min(np.vstack((t1, t2)), axis=0)
+        dmax = np.max(np.vstack((t1, t2)), axis=0)
+
+        tmin = np.nanmax(np.vstack((tmin, dmin)), axis=0)
+        tmax = np.nanmin(np.vstack((tmax, dmax)), axis=0)
+
+    return tmax > np.clip(tmin, 0., None), tmin

@@ -1,14 +1,21 @@
 import numpy as np
-from numba import njit, float64
+from numba import njit, float64, uint8
 from numba.experimental import jitclass
 
-spec = [
+spec1 = [
     ('origin', float64[:]),
     ('dir', float64[:]),
     ('norm_dir', float64[:])
 ]
 
-@jitclass(spec) # type: ignore
+spec2 = [
+    ('origins', float64[:, :]),
+    ('dirs', float64[:, :]),
+    ('norm_dirs', float64[:, :]),
+    ('accumulation', uint8[:])
+]
+
+@jitclass(spec1) # type: ignore
 class Ray:
     """Contains information about 1 ray with dimension M
     
@@ -29,13 +36,14 @@ class Ray:
         self.dir = rd
         self.norm_dir = normalize(rd)
 
+@jitclass(spec2)
 class Rays:
     """Contains information about N rays with dimension M
     
     Attributes:
         origins: Array of Ray Origins (N, M)
         dirs: Array of Ray Directions (N, M)
-        norm_dirs: Array of Normalized Ray Directions
+        norm_dirs: Array of Normalized Ray Directions (N, M)
         accum: Data each Ray needs to accumulate (N, )
     """
     # (N, 3)

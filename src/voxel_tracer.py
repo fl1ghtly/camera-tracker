@@ -47,9 +47,9 @@ class VoxelTracer:
                                    self.grid_size, 
                                    self.voxel_size)
 
-    def voxel_to_world(self, voxels: np.ndarray) -> np.ndarray:
-        """Returns the coordinates of the voxel(s) in world space"""
-        return self.grid_min + (voxels + 0.5) * self.voxel_size
+    def grid_to_voxel(self, ind: np.ndarray) -> np.ndarray:
+        """Returns the coordinates of the grid indices in voxel space"""
+        return self.grid_min + (ind + 0.5) * self.voxel_size
     
     @staticmethod
     @njit
@@ -108,7 +108,7 @@ class VoxelTracer:
     def _raycast_batch(rays: Rays, grid_min: np.ndarray, 
                        grid_max: np.ndarray, grid_size: int, 
                        voxel_size: float) -> tuple[np.ndarray, np.ndarray]:
-        voxels = [np.array((x, x, x)).astype(np.int32) for x in range(0)]
+        voxels = []
 
         # Check if ray intersects voxel grid
         intersected, t_entry = ray_aabb_batch(rays, grid_min, grid_max)
@@ -140,21 +140,41 @@ class VoxelTracer:
         voxels.append(current_voxels.copy())
         data = [rays.accumulation]
         # Get the number of rows
-        n = len(current_voxels)
         for _ in range(MAX_RAY_STEPS):
             # Find which axis has the smallest tMax and traverse on that axis
             ind = np.argmin(tMax, axis=1)
-            current_voxels[np.arange(n), ind] += steps[np.arange(n), ind]
-            inside_grid = np.all((current_voxels >= 0) & (current_voxels < grid_size), 
-                                 axis=1)
-            if np.all(inside_grid == False): break
+            # Move in the direction of the smallest tMax value
+            step_voxels(current_voxels, steps, ind)
+            # Get mask of voxels inside the grid
+            inside_grid = np.logical_and.reduce((current_voxels >= 0) & (current_voxels < grid_size), axis=1)
+            # Check if every voxel is outside grid
+            if all_false(inside_grid): break
             # Add delta to tMax only for rows that are inside the grid
-            tMax[np.where(inside_grid)[0], ind[inside_grid]] += deltas[np.where(inside_grid)[0], ind[inside_grid]]
+            tmax_update(tMax, deltas, inside_grid, ind)
             voxels.append(current_voxels.copy()[inside_grid])
             data.append(rays.accumulation[inside_grid])
         return np.concatenate(voxels), np.concatenate(data)
+    
+@njit
+def step_voxels(voxels: np.ndarray, steps: np.ndarray, ind: np.ndarray) -> None:
+    for i in range(len(voxels)):
+        axis = ind[i]
+        voxels[i, axis] += steps[i, axis]
 
 @njit
+def tmax_update(tMax: np.ndarray, delta: np.ndarray, inside: np.ndarray, ind: np.ndarray) -> None:
+    for i in range(len(inside)):
+        if inside[i]:
+            axis = ind[i]
+            tMax[i, axis] += delta[i, axis] 
+        
+@njit
+def all_false(arr: np.ndarray) -> bool:
+    for i in range(len(arr)):
+        if arr[i]: return False
+    return True
+
+@njit   
 def ray_aabb(ray: Ray, boxMin: np.ndarray, boxMax: np.ndarray, t_entry: np.ndarray) -> bool:
     """Returns whether a Ray intersects an Axis-aligned Bounding Box (AABB)
     and the time of intersection"""

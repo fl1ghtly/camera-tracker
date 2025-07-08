@@ -3,6 +3,7 @@ from multiprocessing import Process, Queue
 from queue import Empty
 import cv2
 import numpy as np
+from sklearn.cluster import DBSCAN
 from numba import njit
 from decord import VideoReader, cpu
 from camera import Camera
@@ -88,6 +89,23 @@ def process_collector(num_processes: int, input: Queue, output: Queue, vt: Voxel
                 current_frame += 1
         except KeyError:
             continue
+
+def get_cluster_centers(data: np.ndarray) -> np.ndarray:
+    """Return an array of all cluster centers in a dataset
+
+    Args:
+        data (np.ndarray): (N, M) array where N is the number of 
+        data points and M is the dimension
+    """
+    centers = []
+    clust = DBSCAN(eps=VOXEL_SIZE, min_samples=2)
+    clust.fit(data)
+
+    for klass in range(clust.labels_.max() + 1):
+        centroid = np.mean(data[clust.labels_ == klass], axis=0)
+        centers.append(centroid)
+
+    return np.vstack(centers)
 
 def main():
     cam_L = Camera((39.694, -211.93, 1.111), 

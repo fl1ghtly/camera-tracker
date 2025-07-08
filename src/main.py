@@ -1,4 +1,5 @@
 import math
+from typing import Callable
 from multiprocessing import Process, Queue
 from queue import Empty
 import cv2
@@ -12,8 +13,8 @@ from voxel_tracer import VoxelTracer
 from ray import Ray, Rays
 from graph import Graph
 
-GRID_SIZE = 32
-VOXEL_SIZE = 4.0
+GRID_SIZE = 200
+VOXEL_SIZE = 1.0
 START_FRAME = 0
 
 def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
@@ -57,7 +58,7 @@ def process_camera(cam: Camera, vt: VoxelTracer, queue: Queue) -> None:
     # End processing
     queue.put((None, None, None))
     
-def process_collector(num_processes: int, input: Queue, output: Queue, vt: VoxelTracer):
+def process_collector(num_processes: int, input: Queue, output: Queue, vt: VoxelTracer) -> None:
     frame_data = {}
     ended_processes = 0
     current_frame = START_FRAME
@@ -107,6 +108,29 @@ def get_cluster_centers(data: np.ndarray) -> np.ndarray:
 
     return np.vstack(centers)
 
+def _multiprocess(cams: list[Camera], input: Queue, output: Queue, vt: VoxelTracer) -> Callable:
+    processes = [Process(target=process_camera, args=(cam, vt, input)) for cam in cams]
+    
+    collector = Process(target=process_collector,
+                        args=(len(cams), input, output, vt))
+    
+    for p in processes:
+        p.start()
+    collector.start()
+    
+    def end_processes():
+        for p in processes:
+            p.join()
+        collector.join()
+        
+    return end_processes
+    
+def _singlethreaded(cams: list[Camera], input: Queue, output: Queue, vt: VoxelTracer):
+    for cam in cams:
+        process_camera(cam, vt, input)
+
+    process_collector(len(cams), input, output, vt)
+    
 def main():
     cam_L = Camera((39.694, -211.93, 1.111), 
                    (94.8, 0.000014, 13.6), 
@@ -126,15 +150,8 @@ def main():
     vt = VoxelTracer(GRID_SIZE, VOXEL_SIZE)
     graph = Graph()
 
-    processes = [Process(target=process_camera, args=(cam, vt, input)) 
-                for cam in cams]
-    
-    collector = Process(target=process_collector,
-                        args=(len(cams), input, output, vt))
-    
-    for p in processes:
-        p.start()
-    collector.start()
+    # _singlethreaded(cams, input, output, vt)
+    end_processes = _multiprocess(cams, input, output, vt)
 
     for cam in cams:
         cam_rot = rotationMatrix(*cam.rotation)
@@ -144,20 +161,25 @@ def main():
         # Add yellow line representing the direction to the origin from the camera
         graph.add_ray(Ray(cam.position, cam.position - np.array((0, 0, 0))), '#FFFF00', reversed=True)
     graph.show()
+    # graph.start_gif('voxel.gif')
     
     while True:
         try:
-            frame, values = output.get_nowait()
+            frame, voxel_grid_state = output.get_nowait()
             if frame is None: break
-            graph.add_voxels(values, vt.voxel_origin, VOXEL_SIZE)
-            graph.update(f'Current Frame: {frame}')
+            graph.add_voxels(voxel_grid_state, vt.voxel_origin, VOXEL_SIZE)
+            graph.update()
+            # graph.write_frame()
+            # motion_voxels = graph.extract_percentile_index(voxel_grid_state, 99.9)
+            # centers = get_cluster_centers(np.transpose(motion_voxels))
+            # print(vt.grid_to_voxel(centers))
         except Empty:
             continue
+    
+    # graph.close_gif()
 
-    for p in processes:
-        p.join()
+    end_processes()
 
-    # motion_voxels = graph.extract_percentile_index(vt.voxel_grid, 99.9)
 
 @njit
 def rotationMatrix(x: float, y: float, z: float) -> np.ndarray:

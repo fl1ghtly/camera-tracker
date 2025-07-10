@@ -116,12 +116,15 @@ class VoxelTracer:
         # Initialization
         # Array Floating point representation of grid entry position
         starts = rays.origins + rays.norm_dirs * np.clip(t_entry, 0, None)[:, np.newaxis]
-        # Filter out rays that don't intersect with the grid
-        starts = starts[intersected]
 
         # Traversal constants
         steps = np.sign(rays.norm_dirs).astype(np.int32)
         deltas = voxel_size / np.abs(rays.norm_dirs)
+        
+        # Filter out rays that don't intersect with the grid
+        starts = starts[intersected]
+        steps = steps[intersected]
+        deltas = deltas[intersected]
         
         # Indices of current voxel
         current_voxels = np.floor((starts - grid_min) / voxel_size).astype(np.int32)
@@ -132,13 +135,14 @@ class VoxelTracer:
         next_voxels = grid_min + (current_voxels + (steps > 0)) * voxel_size
 
         # Calculate tMax, distance to the next voxel boundary for each axis
-        tMax = (next_voxels - rays.origins) / rays.norm_dirs
+        tMax = (next_voxels - rays.origins[intersected]) / rays.norm_dirs[intersected]
         # Handle division by zero
         # tMax[rays.norm_dirs == 0] = np.inf
 
         # Traversal
         voxels.append(current_voxels.copy())
-        data = [rays.accumulation]
+        filtered_accum = rays.accumulation[intersected]
+        data = [filtered_accum]
         # Get the number of rows
         for _ in range(MAX_RAY_STEPS):
             # Find which axis has the smallest tMax and traverse on that axis
@@ -152,7 +156,7 @@ class VoxelTracer:
             # Add delta to tMax only for rows that are inside the grid
             tmax_update(tMax, deltas, inside_grid, ind)
             voxels.append(current_voxels.copy()[inside_grid])
-            data.append(rays.accumulation[inside_grid])
+            data.append(filtered_accum[inside_grid])
         return np.concatenate(voxels), np.concatenate(data)
     
 @njit
